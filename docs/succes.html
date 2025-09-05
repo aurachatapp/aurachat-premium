@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Subscription Success – AuraChat</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body { font-family: system-ui, Arial, sans-serif; background:#0b0f1a; color:#eaeaff; text-align:center; padding:50px; }
+    .card { max-width:480px; margin:auto; background:#11162a; padding:30px; border-radius:16px; border:1px solid #2a2f45; }
+    h1 { margin-bottom:16px; }
+    p { opacity:.8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>🎉 AuraChat Premium Activated!</h1>
+    <p>Your subscription was successful. You can now use Premium features in the extension.</p>
+    <p id="status">Finalizing setup...</p>
+  </div>
+
+  <script>
+    (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const sessionId = params.get("session_id");
+      const statusEl = document.getElementById("status");
+
+      if (!sessionId) {
+        statusEl.textContent = "Error: Missing session ID.";
+        return;
+      }
+
+      try {
+        const res = await fetch("https://aurachat-premium-backend.onrender.com/exchange-session?session_id=" + encodeURIComponent(sessionId));
+        const data = await res.json();
+
+        if (data.token) {
+          // Send token to extension content script
+          window.postMessage({ type: "AURACH_SESSION", token: data.token }, "*");
+          statusEl.textContent = "Premium ready! You can close this page.";
+        } else {
+          statusEl.textContent = "Could not verify subscription.";
+        }
+      } catch (err) {
+        console.error(err);
+        statusEl.textContent = "Server error.";
+      }
+    })();
+  </script>
+</body>
+</html>
