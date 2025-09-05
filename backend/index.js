@@ -26,9 +26,12 @@ app.get("/exchange-session", async (req, res) => {
     });
 
     const paid = session.payment_status === "paid";
+    const complete = session.status === "complete"; // Checkout Session completed
     const sub = session.subscription;
     const subOk = sub && ["active", "trialing"].includes(sub.status);
-    if (!paid && !subOk) return res.status(402).json({ error: "not_paid" });
+    if (!paid && !complete && !subOk) {
+      return res.status(402).json({ error: "not_paid_or_complete" });
+    }
 
     const email =
       session.customer_details?.email ||

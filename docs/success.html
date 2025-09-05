@@ -20,28 +20,22 @@
 
   <script>
     (async () => {
-      const params = new URLSearchParams(window.location.search);
+      const params = new URLSearchParams(location.search);
       const sessionId = params.get("session_id");
       const statusEl = document.getElementById("status");
-
-      if (!sessionId) {
-        statusEl.textContent = "Error: Missing session ID.";
-        return;
-      }
-
+      if (!sessionId) { statusEl.textContent = "Error: Missing session ID."; return; }
       try {
-        const res = await fetch("https://aurachat-premium-backend.onrender.com/exchange-session?session_id=" + encodeURIComponent(sessionId));
-        const data = await res.json();
-
-        if (data.token) {
-          // Send token to extension content script
-          window.postMessage({ type: "AURACH_SESSION", token: data.token }, "*");
+        const r = await fetch("https://aurachat-premium-backend.onrender.com/exchange-session?session_id=" + encodeURIComponent(sessionId));
+        const data = await r.json();
+        if (data.session) {
+          window.postMessage({ type: "AURACH_SESSION", token: data.session }, "*");
           statusEl.textContent = "Premium ready! You can close this page.";
         } else {
           statusEl.textContent = "Could not verify subscription.";
+          console.log("exchange-session response:", data);
         }
-      } catch (err) {
-        console.error(err);
+      } catch (e) {
+        console.error(e);
         statusEl.textContent = "Server error.";
       }
     })();

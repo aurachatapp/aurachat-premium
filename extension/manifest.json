@@ -7,4 +7,12 @@
     "default_icon": { "128": "icons/icon128.png" }
   },
   "permissions": ["storage"]
+  ,
+  "content_scripts": [
+    {
+      "matches": ["https://aurachatapp.github.io/aurachat-premium/*"],
+      "js": ["content.session.js"],
+      "run_at": "document_start"
+    }
+  ]
 }
