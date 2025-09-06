@@ -84,9 +84,8 @@ VERIFY_BTN.onclick = async () => {
   msg2('');
   let email = (EMAIL_INPUT.value || '').trim().toLowerCase();
   if (!email) {
-    // fallback to storage if input is empty
     email = (await loadLastEmail()).trim().toLowerCase();
-    if (email) EMAIL_INPUT.value = email;
+    if(email) EMAIL_INPUT.value = email;
   }
   const code = (CODE_INPUT.value || '').trim();
   if(!email) return msg2('Enter your email first');

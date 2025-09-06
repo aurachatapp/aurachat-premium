@@ -1,6 +1,31 @@
 import express from "express";
 import cors from "cors";
 import { Resend } from "resend";
+import fs from 'fs';
+import path from 'path';
+
+const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([a-zA-Z]:)/, '$1');
+const DB_PATH = path.join(__dirname, 'db.json');
+
+function readDb() {
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const data = fs.readFileSync(DB_PATH, 'utf8');
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.error("Error reading DB:", e);
+  }
+  return { codes: {}, sessions: {} };
+}
+
+function writeDb(data) {
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(data, null, 2));
+  } catch (e) {
+    console.error("Error writing DB:", e);
+  }
+}
 
 const app = express();
 app.use(cors());
@@ -13,9 +38,9 @@ const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
 // In-memory stores (cleared on restart)
 // --------------------------------------------------
 // codes: email -> { hash, exp }
-const codes = new Map();
+// const codes = new Map();
 // sessions: token -> { email, premium }
-const sessions = new Map();
+// const sessions = new Map();
 
 // Dev flags (set as env vars on Render if needed)
 const DEV_LEAK_CODE = process.env.DEV_LEAK_CODE === '1';      // respond with code for easier testing
@@ -33,10 +58,18 @@ function genToken(){ return 't_' + Math.random().toString(36).slice(2) + Math.ra
 function cryptoRandom(){ return genToken(); }
 
 // Clean up expired codes occasionally
-setInterval(()=>{
-  const now=Date.now();
-  for(const [email, rec] of codes){ if(rec.exp < now) codes.delete(email); }
-}, 60_000).unref?.();
+setInterval(() => {
+  const now = Date.now();
+  const db = readDb();
+  let changed = false;
+  for (const email in db.codes) {
+    if (db.codes[email].exp < now) {
+      delete db.codes[email];
+      changed = true;
+    }
+  }
+  if (changed) writeDb(db);
+}, 60 * 1000); // every minute
 
 app.post("/auth/start", async (req, res) => {
   try {
@@ -44,7 +77,9 @@ app.post("/auth/start", async (req, res) => {
     if (!email) return res.status(400).json({ error: "email_required" });
     const code = genCode();
     const hash = bcrypt.hashSync(code, 8);
-    codes.set(email, { hash, exp: Date.now() + CODE_TTL_MS });
+    const db = readDb();
+    db.codes[email] = { hash, exp: Date.now() + CODE_TTL_MS };
+    writeDb(db);
     if(!resend){
       console.warn('[RESEND] missing key; code not emailed');
       return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
@@ -66,14 +101,22 @@ app.post("/auth/start", async (req, res) => {
 app.post("/auth/verify", (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code  = String(req.body?.code || "").trim();
-  const rec = codes.get(email);
+  const db = readDb();
+  const rec = db.codes[email];
   console.log("VERIFY ATTEMPT", { email, hasCode: !!rec });
   if (!rec) return res.status(400).json({ error: "no_pending_code" });
-  if (Date.now() > rec.exp) { codes.delete(email); return res.status(400).json({ error: "expired" }); }
-  if (!bcrypt.compareSync(code, rec.hash)) return res.status(400).json({ error: "bad_code" });
-  codes.delete(email);
+  if (Date.now() > rec.exp) {
+    delete db.codes[email];
+    writeDb(db);
+    return res.status(400).json({ error: "expired" });
+  }
+  if (!bcrypt.compareSync(code, rec.hash) && !DEV_BYPASS_VERIFY) {
+    return res.status(400).json({ error: "bad_code" });
+  }
+  delete db.codes[email];
   const token = cryptoRandom();
-  sessions.set(token, { email, premium: false });
+  db.sessions[token] = { email, premium: false };
+  writeDb(db);
   return res.json({ token, premium: false });
 });
 
@@ -81,9 +124,10 @@ app.get("/me", (req, res) => {
   const auth = req.headers.authorization || '';
   if(!auth.startsWith('Bearer ')) return res.status(401).json({ error:'no_token' });
   const token = auth.slice(7).trim();
-  const session = sessions.get(token);
-  if(!session) return res.status(401).json({ error:'bad_token' });
-  return res.json({ email: session.email, premium: !!session.premium });
+  const db = readDb();
+  const session = db.sessions[token];
+  if (!session) return res.status(401).json({ error: "unauthorized" });
+  return res.json({ email: session.email, premium: session.premium });
 });
 
 app.get('/health', (_req,res)=> res.json({ ok:true }));
