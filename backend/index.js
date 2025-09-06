@@ -3,6 +3,7 @@ import cors from "cors";
 import { Resend } from "resend";
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const __dirname = path.dirname(new URL(import.meta.url).pathname).replace(/^\/([a-zA-Z]:)/, '$1');
 const DB_PATH = path.join(__dirname, 'db.json');
@@ -45,6 +46,7 @@ const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
 // Dev flags (set as env vars on Render if needed)
 const DEV_LEAK_CODE = process.env.DEV_LEAK_CODE === '1';      // respond with code for easier testing
 const DEV_BYPASS_VERIFY = process.env.DEV_BYPASS_VERIFY === '1'; // allow any 6-digit code if true
+const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret'; // for stateless pending token
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
 // Resend setup
@@ -80,9 +82,14 @@ app.post("/auth/start", async (req, res) => {
     const db = readDb();
     db.codes[email] = { hash, exp: Date.now() + CODE_TTL_MS };
     writeDb(db);
+    // create stateless pending token (so verify works even if db entry lost)
+    const pendingPayload = { email, hash, exp: Date.now() + CODE_TTL_MS };
+    const pendingData = Buffer.from(JSON.stringify(pendingPayload)).toString('base64url');
+    const pendingSig = crypto.createHmac('sha256', AUTH_SECRET).update(pendingData).digest('base64url');
+    const pendingToken = `${pendingData}.${pendingSig}`;
     if(!resend){
       console.warn('[RESEND] missing key; code not emailed');
-      return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
+      return res.json(DEV_LEAK_CODE ? { ok:true, code, pendingToken } : { ok:true, pendingToken });
     }
     const subject = 'Your AuraChat verification code';
     const text = `Your AuraChat code is ${code}. It expires in 10 minutes.`;
@@ -92,7 +99,7 @@ app.post("/auth/start", async (req, res) => {
       console.error('[RESEND] send error', sendResp.error);
       return res.status(500).json({ error:'server_error' });
     }
-    return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
+    return res.json(DEV_LEAK_CODE ? { ok:true, code, pendingToken } : { ok:true, pendingToken });
   } catch(e){
     console.error(e); return res.status(500).json({ error:'server_error' });
   }
@@ -101,19 +108,36 @@ app.post("/auth/start", async (req, res) => {
 app.post("/auth/verify", (req, res) => {
   const email = normalizeEmail(req.body?.email);
   const code  = String(req.body?.code || "").trim();
+  const pendingToken = req.body?.pendingToken ? String(req.body.pendingToken) : null;
   const db = readDb();
   const rec = db.codes[email];
-  console.log("VERIFY ATTEMPT", { email, hasCode: !!rec });
-  if (!rec) return res.status(400).json({ error: "no_pending_code" });
-  if (Date.now() > rec.exp) {
-    delete db.codes[email];
-    writeDb(db);
+  let hash = rec?.hash;
+  let exp = rec?.exp;
+  // attempt stateless decode if no record
+  if((!rec || !hash) && pendingToken){
+    try {
+      const [data, sig] = pendingToken.split('.');
+      const expectSig = crypto.createHmac('sha256', AUTH_SECRET).update(data).digest('base64url');
+      if(sig === expectSig){
+        const payload = JSON.parse(Buffer.from(data, 'base64url').toString('utf8'));
+        if(payload.email === email){
+          hash = payload.hash; exp = payload.exp;
+        }
+      }
+    } catch(err){
+      console.warn('pending token parse failed', err.message);
+    }
+  }
+  console.log("VERIFY ATTEMPT", { email, hasCode: !!rec, usedStateless: !!(!rec && hash) });
+  if(!hash) return res.status(400).json({ error: "no_pending_code" });
+  if(Date.now() > exp){
+    if(rec){ delete db.codes[email]; writeDb(db); }
     return res.status(400).json({ error: "expired" });
   }
-  if (!bcrypt.compareSync(code, rec.hash) && !DEV_BYPASS_VERIFY) {
+  if(!bcrypt.compareSync(code, hash) && !DEV_BYPASS_VERIFY){
     return res.status(400).json({ error: "bad_code" });
   }
-  delete db.codes[email];
+  if(rec){ delete db.codes[email]; }
   const token = cryptoRandom();
   db.sessions[token] = { email, premium: false };
   writeDb(db);
