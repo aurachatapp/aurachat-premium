@@ -82,7 +82,12 @@ SEND_BTN.onclick = async () => {
 // VERIFY
 VERIFY_BTN.onclick = async () => {
   msg2('');
-  const email = (EMAIL_INPUT.value || '').trim().toLowerCase();
+  let email = (EMAIL_INPUT.value || '').trim().toLowerCase();
+  if (!email) {
+    // fallback to storage if input is empty
+    email = (await loadLastEmail()).trim().toLowerCase();
+    if (email) EMAIL_INPUT.value = email;
+  }
   const code = (CODE_INPUT.value || '').trim();
   if(!email) return msg2('Enter your email first');
   if(code.length !== 6) return msg2('Enter the 6 digits');
@@ -109,6 +114,8 @@ let emailSaveTimer;
 
 (async function init(){
   // restore email first
+  const lastEmail = await loadLastEmail();
+  if (lastEmail) EMAIL_INPUT.value = lastEmail;
   try { const saved = await loadLastEmail(); if (saved) EMAIL_INPUT.value = saved.toLowerCase(); } catch {}
   // if a code was already requested previously (no token yet) keep code step visible
   // we could persist that too later if desired.
