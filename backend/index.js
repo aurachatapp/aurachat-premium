@@ -41,19 +41,23 @@ app.post("/auth/start", (req, res) => {
 });
 
 app.post("/auth/verify", (req, res) => {
-  const email = (req.body?.email || "").trim().toLowerCase();
+  const rawEmail = (req.body?.email || "").trim();
+  const email = rawEmail.toLowerCase();
   const code = (req.body?.code || "").trim();
-  if(!email || !/^[^@]+@[^@]+\.[^@]+$/.test(email)) return res.status(400).json({ error:'bad_email' });
+  // Relaxed email check: must contain '@' and at least 3 chars total
+  if(!email || email.length < 3 || !email.includes('@')) return res.status(400).json({ error:'bad_email' });
   if(!/^[0-9]{6}$/.test(code)) return res.status(400).json({ error:'bad_code' });
 
   const rec = codes.get(email);
+  if(process.env.DEV_LOG_VERIFY==='1'){
+    console.log('[VERIFY ATTEMPT]', { email, code, hasRecord: !!rec, bypass: DEV_BYPASS_VERIFY });
+  }
   if(!rec){
     if(!DEV_BYPASS_VERIFY) return res.status(400).json({ error:'no_code' });
   } else {
     if(rec.exp < Date.now()){ codes.delete(email); return res.status(400).json({ error:'expired' }); }
     if(!DEV_BYPASS_VERIFY && rec.code !== code) return res.status(400).json({ error:'bad_code' });
-    // success path => prevent reuse
-    codes.delete(email);
+    codes.delete(email); // prevent reuse
   }
 
   const token = genToken();
