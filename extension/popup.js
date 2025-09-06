@@ -9,6 +9,21 @@ const STATUS = document.getElementById("status");
 const MSG = (t="") => (document.getElementById("msg").textContent = t);
 const MSG2 = (t="") => (document.getElementById("msg2").textContent = t);
 
+// restore saved email early
+try {
+  chrome.storage.local.get("lastEmail", v => {
+    if (v && v.lastEmail) {
+      try { EMAIL_INPUT.value = v.lastEmail; } catch {}
+    }
+  });
+} catch {}
+
+// live persist email on each change so it stays even if popup closed before sending
+EMAIL_INPUT?.addEventListener('input', () => {
+  const val = (EMAIL_INPUT.value || '').trim();
+  chrome.storage.local.set({ lastEmail: val });
+});
+
 // storage helpers
 const getToken = () => new Promise(r => chrome.storage.local.get("token", v => r(v.token || null)));
 const setToken = (t) => new Promise(r => chrome.storage.local.set({ token: t }, () => r()));
@@ -58,6 +73,8 @@ async function checkStatus() {
 SEND_BTN.onclick = async () => {
   MSG("");
   const email = (EMAIL_INPUT.value || "").trim();
+  // persist last used email
+  if (email) try { await chrome.storage.local.set({ lastEmail: email }); } catch {}
   if (!email) return MSG("Enter your email");
   try {
     await call("/auth/start", {
@@ -147,6 +164,8 @@ function showStatus() {
 sendBtn.onclick = async () => {
   msg("");
   const email = emailEl.value.trim();
+  // persist last used email
+  if (email) try { await chrome.storage.local.set({ lastEmail: email }); } catch {}
   if (!email) return msg("Enter your email");
   const res = await fetch(`${API}/auth/start`, {
     method: "POST",
@@ -181,3 +200,13 @@ document.getElementById("logout").onclick = async () => {
 };
 
 checkStatus();
+
+// restore last email on load
+try {
+  chrome.storage.local.get("lastEmail", v => {
+    if (v && v.lastEmail) {
+      try { EMAIL_INPUT.value = v.lastEmail; } catch {}
+      try { emailEl.value = v.lastEmail; } catch {}
+    }
+  });
+} catch {}
