@@ -1,4 +1,4 @@
-// Single, simplified implementation with persistent email
+// Single, simplified implementation with persistent email (supports stateless JWT verification)
 const API = "https://aurachat-premium-backend.onrender.com";
 
 const el = (id) => document.getElementById(id);
@@ -16,6 +16,11 @@ const msg2 = (t="") => el("msg2").textContent = t;
 const getToken = () => new Promise(r => chrome.storage.local.get("token", v => r(v.token || null)));
 const setToken = (token) => new Promise(r => chrome.storage.local.set({ token }, () => r()));
 const clearToken = () => new Promise(r => chrome.storage.local.remove(["token"], () => r()));
+
+// pendingToken helpers (needed so backend can verify even after restart)
+const savePendingToken = (pendingToken) => new Promise(r => chrome.storage.local.set({ pendingToken }, () => r()));
+const getPendingToken = () => new Promise(r => chrome.storage.local.get('pendingToken', v => r(v.pendingToken || null)));
+const clearPendingToken = () => new Promise(r => chrome.storage.local.remove(['pendingToken'], () => r()));
 
 // email persistence helpers
 const saveLastEmail = (email) => new Promise(r => chrome.storage.local.set({ lastEmail: email }, () => r()));
@@ -63,15 +68,28 @@ EMAIL_INPUT.addEventListener('input', async () => {
   await saveLastEmail(e);
 });
 
-// SEND CODE
+// SEND CODE (prefers new stateless endpoint; falls back to legacy if needed)
 SEND_BTN.onclick = async () => {
   msg('');
   const email = (EMAIL_INPUT.value || '').trim().toLowerCase();
   if(!email) return msg('Enter your email');
-  EMAIL_INPUT.value = email; // always set input to normalized
-  await saveLastEmail(email); // always save
+  EMAIL_INPUT.value = email;
+  await saveLastEmail(email);
   try {
-    await api('/auth/start', { email });
+    // try stateless endpoint first
+    let resp;
+    try {
+      resp = await api('/auth/send-code', { email });
+    } catch {
+      // fallback to legacy
+      resp = await api('/auth/start', { email });
+    }
+    if(resp?.token){
+      // stateless JWT method
+      await savePendingToken(resp.token); // reuse same storage key
+    } else if(resp?.pendingToken){
+      await savePendingToken(resp.pendingToken);
+    }
     codeStep.style.display = 'block';
     msg('Code sent. Check your inbox.');
   } catch (e) {
@@ -91,8 +109,20 @@ VERIFY_BTN.onclick = async () => {
   if(!email) return msg2('Enter your email first');
   if(code.length !== 6) return msg2('Enter the 6 digits');
   try {
-    const data = await api('/auth/verify', { email, code });
-    await setToken(data.token);
+    const pendingToken = await getPendingToken();
+    if(!pendingToken) return msg2('Send a new code first');
+    // detect if pendingToken looks like JWT (contains two dots)
+    const isJwt = pendingToken.split('.').length === 3;
+    let body;
+    if(isJwt){
+      body = { token: pendingToken, code };
+    } else {
+      body = { email, code, pendingToken };
+    }
+    const data = await api('/auth/verify', body);
+    await clearPendingToken();
+    const sessionToken = data.session || data.token; // stateless or legacy
+    if(sessionToken) await setToken(sessionToken);
     statusEl.textContent = data.premium ? 'Premium' : 'Free';
     showStatus();
   } catch (e) {
