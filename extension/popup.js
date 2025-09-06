@@ -66,9 +66,10 @@ EMAIL_INPUT.addEventListener('input', async () => {
 // SEND CODE
 SEND_BTN.onclick = async () => {
   msg('');
-  const email = await getNormalizedEmail();
+  const email = (EMAIL_INPUT.value || '').trim().toLowerCase();
   if(!email) return msg('Enter your email');
-  await saveLastEmail(email);
+  EMAIL_INPUT.value = email; // always set input to normalized
+  await saveLastEmail(email); // always save
   try {
     await api('/auth/start', { email });
     codeStep.style.display = 'block';
@@ -81,7 +82,7 @@ SEND_BTN.onclick = async () => {
 // VERIFY
 VERIFY_BTN.onclick = async () => {
   msg2('');
-  const email = await getNormalizedEmail();
+  const email = (EMAIL_INPUT.value || '').trim().toLowerCase();
   const code = (CODE_INPUT.value || '').trim();
   if(!email) return msg2('Enter your email first');
   if(code.length !== 6) return msg2('Enter the 6 digits');
