@@ -1,104 +1,90 @@
-// backend/index.js
+// Email OTP + on-demand premium check backend
 import express from "express";
 import cors from "cors";
-import Stripe from "stripe";
-import bodyParser from "body-parser";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
+import Stripe from "stripe";
+import { Resend } from "resend";
 
 const app = express();
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
-
-// CORS + JSON for normal routes
-app.use(cors());
 app.use(express.json());
+app.use(cors({ origin: [/^chrome-extension:\/\//, /github\.io$/] }));
 
-// Health
-app.get("/", (_, res) => res.send("AuraChat billing backend OK"));
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+const resend = new Resend(process.env.RESEND_API_KEY || "dummy");
+const JWT_SECRET = process.env.JWT_SECRET || "dev_secret_change_me";
 
-// Exchange a Stripe Checkout session_id for a signed JWT
-app.get("/exchange-session", async (req, res) => {
+// simple in-memory stores
+const users = new Map(); // email -> { id, email, premium, stripeCustomerId }
+const codes = new Map(); // email -> { hash, expiresAt }
+let uid = 1;
+const upsertUser = (email) => {
+  let u = users.get(email);
+  if (!u) { u = { id: uid++, email, premium: false, stripeCustomerId: null }; users.set(email, u); }
+  return u;
+};
+
+app.post("/auth/start", async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: "email_required" });
+  const u = upsertUser(email);
+  const code = ("" + Math.floor(100000 + Math.random()*900000)).slice(-6);
+  const hash = bcrypt.hashSync(code, 10);
+  const expiresAt = Date.now() + 10*60*1000;
+  codes.set(email, { hash, expiresAt });
   try {
-    const session_id = String(req.query.session_id || "");
-    if (!session_id) return res.status(400).json({ error: "missing session_id" });
-
-    const session = await stripe.checkout.sessions.retrieve(session_id, {
-      expand: ["customer", "subscription"]
-    });
-
-    const paid = session.payment_status === "paid";
-    const complete = session.status === "complete"; // Checkout Session completed
-    const sub = session.subscription;
-    const subOk = sub && ["active", "trialing"].includes(sub.status);
-    if (!paid && !complete && !subOk) {
-      return res.status(402).json({ error: "not_paid_or_complete" });
-    }
-
-    const email =
-      session.customer_details?.email ||
-      (typeof session.customer === "object" ? session.customer?.email : "") ||
-      "";
-
-    const cid =
-      (typeof session.customer === "string" && session.customer) ||
-      (typeof session.customer === "object" && session.customer?.id) ||
-      "";
-
-    if (!email) return res.status(400).json({ error: "missing_email" });
-
-    const token = jwt.sign({ cid, email }, process.env.JWT_SECRET, { expiresIn: "30d" });
-    return res.json({ session: token });
-  } catch (err) {
-    console.error("exchange-session error:", err);
-    return res.status(500).json({ error: "server_error" });
-  }
-});
-
-// Validate a stored token and re-check Stripe
-app.get("/me", async (req, res) => {
-  try {
-    const auth = req.headers.authorization || "";
-    const m = auth.match(/^Bearer (.+)$/);
-    if (!m) return res.status(401).json({ error: "missing_token" });
-
-    const payload = jwt.verify(m[1], process.env.JWT_SECRET); // { cid?, email }
-    let customerId = payload.cid || "";
-
-    if (!customerId) {
-      const customers = await stripe.customers.list({ email: payload.email, limit: 1 });
-      if (!customers.data.length) return res.json({ premium: false });
-      customerId = customers.data[0].id;
-    }
-
-    const subs = await stripe.subscriptions.list({ customer: customerId, status: "all" });
-    const premium = subs.data.some(s => ["active", "trialing"].includes(s.status));
-    return res.json({ premium, email: payload.email });
-  } catch (err) {
-    console.error("me error:", err);
-    return res.status(401).json({ error: "invalid_token" });
-  }
-});
-
-// Stripe webhook (raw body ONLY here)
-app.post("/webhook", bodyParser.raw({ type: "application/json" }), (req, res) => {
-  try {
-    // If you’ve set STRIPE_WEBHOOK_SECRET, verify; otherwise just log and accept.
-    const sig = req.headers["stripe-signature"];
-    if (process.env.STRIPE_WEBHOOK_SECRET) {
-      const event = stripe.webhooks.constructEvent(
-        req.body,
-        sig,
-        process.env.STRIPE_WEBHOOK_SECRET
-      );
-      console.log("Stripe event:", event.type);
+    if (process.env.RESEND_API_KEY) {
+      await resend.emails.send({ from: "AuraChat <login@aurachat.app>", to: email, subject: "Your AuraChat code", text: `Your code is ${code} (10 min).` });
     } else {
-      console.log("Webhook received (no verification configured).");
+      console.log("LOGIN CODE for", email, "=", code);
     }
-    res.json({ received: true });
-  } catch (err) {
-    console.error("Webhook verification failed:", err.message);
-    res.status(400).send(`Webhook Error: ${err.message}`);
-  }
+  } catch (e) { console.error(e); return res.status(500).json({ error: "email_failed" }); }
+  res.json({ ok: true });
 });
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("Server running on port " + port));
+app.post("/auth/verify", (req, res) => {
+  const { email, code } = req.body || {};
+  const rec = codes.get(email);
+  const u = users.get(email);
+  if (!rec || !u) return res.status(400).json({ error: "no_pending_code" });
+  if (Date.now() > rec.expiresAt) return res.status(400).json({ error: "expired" });
+  if (!bcrypt.compareSync(code, rec.hash)) return res.status(400).json({ error: "bad_code" });
+  codes.delete(email);
+  const token = jwt.sign({ uid: u.id, email }, JWT_SECRET, { expiresIn: "30d" });
+  res.json({ token, premium: !!u.premium });
+});
+
+function auth(req, res, next) {
+  const h = req.headers.authorization || "";
+  const t = h.startsWith("Bearer ") ? h.slice(7) : null;
+  if (!t) return res.status(401).json({ error: "no_token" });
+  try { req.user = jwt.verify(t, JWT_SECRET); next(); }
+  catch { return res.status(401).json({ error: "bad_token" }); }
+}
+
+async function computePremiumByEmail(email) {
+  let u = upsertUser(email);
+  if (!u.stripeCustomerId) {
+    const custs = await stripe.customers.list({ email, limit: 1 });
+    const c = custs.data[0];
+    if (c) u.stripeCustomerId = c.id;
+  }
+  if (!u.stripeCustomerId) return false;
+  const subs = await stripe.subscriptions.list({ customer: u.stripeCustomerId, status: "all", limit: 1 });
+  const sub = subs.data[0];
+  const active = !!sub && ["active", "trialing"].includes(sub.status);
+  u.premium = active;
+  return active;
+}
+
+app.get("/me", auth, async (req, res) => {
+  const email = req.user.email;
+  const u = upsertUser(email);
+  let premium = !!u.premium;
+  try { premium = await computePremiumByEmail(email); } catch(e) { console.error(e); }
+  res.json({ email, premium });
+});
+
+app.get("/", (_, res) => res.send("AuraChat backend ok"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("Server on", PORT));
