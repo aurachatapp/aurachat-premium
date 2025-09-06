@@ -8,12 +8,16 @@
   },
   "permissions": ["storage"],
   "host_permissions": [
-    "https://aurachatapp.github.io/aurachat-premium/*",
     "https://aurachat-premium-backend.onrender.com/*"
   ],
   "content_scripts": [
     {
       "matches": ["https://aurachatapp.github.io/aurachat-premium/*"],
+      "exclude_matches": [
+        "https://aurachatapp.github.io/*",
+        "https://*.stripe.com/*",
+        "https://billing.stripe.com/*"
+      ],
       "js": ["content.session.js"],
       "run_at": "document_start"
     }

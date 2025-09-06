@@ -1,70 +1,35 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
   <title>AuraChat Premium</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    :root{
-      --bg:#0b1220;--card:#111a2d;--text:#e9eef9;--muted:#a9b3c9;--accent:#8f5bff;--accent2:#2bd4bd;
-    }
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--text);font:16px/1.5 system-ui,Segoe UI,Roboto,Arial}
-    .wrap{max-width:880px;margin:64px auto;padding:0 20px}
-    .card{background:var(--card);border-radius:18px;padding:28px 28px 24px;box-shadow:0 10px 35px rgba(0,0,0,.25)}
-    h1{margin:0 0 8px;font-size:28px}
-    p{margin:0 0 6px;color:var(--muted)}
-    ul{margin:16px 0 4px 18px}
-    li{margin:6px 0}
-    .cta{display:flex;gap:12px;flex-wrap:wrap;margin:18px 0 6px}
-    .btn{display:inline-block;padding:12px 16px;border-radius:12px;text-decoration:none;color:#fff}
-    .btn.primary{background:var(--accent)}
-    .btn.secondary{background:#23314f}
-    .note{color:var(--muted);font-size:.95rem}
-    .hr{height:1px;background:#1b2845;margin:18px 0}
-    .faq h3{margin:16px 0 6px;font-size:18px}
-    .footer{opacity:.7;font-size:.9rem;margin-top:12px}
-    @media (max-width:560px){
-      .wrap{margin:28px auto}
-      h1{font-size:24px}
-    }
+    body{background:#0b1220;color:#e9eef9;font-family:system-ui,Segoe UI,Roboto,Arial}
+    .card{max-width:720px;margin:64px auto;padding:28px;border-radius:16px;background:#121a2b;box-shadow:0 6px 24px rgba(0,0,0,.25)}
+    h1{margin:0 0 12px}
+    ul{line-height:1.7}
+    .row{margin-top:20px;display:flex;gap:12px;flex-wrap:wrap}
+    a.btn{padding:12px 16px;border-radius:12px;background:#915bff;text-decoration:none;color:#fff;display:inline-block}
+    .note{opacity:.75;font-size:.95rem;margin-top:8px}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
-      <h1>AuraChat Premium</h1>
-      <p>Unlock floating avatars, custom images, unlimited sessions, and priority updates.</p>
-
-      <ul>
-        <li>Unlimited chats with avatars</li>
-        <li>Custom image uploads</li>
-        <li>Faster performance</li>
-        <li>Priority support</li>
-      </ul>
-
-      <div class="cta">
-        <!-- Replace the Payment Link URL below with your Stripe test Payment Link -->
-        <a class="btn primary" href="https://buy.stripe.com/test_XXXXXX" target="_blank" rel="noopener">Subscribe – €3.99 / month</a>
-
-        <!-- Your existing Customer Portal link goes here -->
-        <a class="btn secondary" href="https://billing.stripe.com/p/login/test_eVq3co9BA8cwbmfaKF9oc00" target="_blank" rel="noopener">Manage billing</a>
-      </div>
-
-      <p class="note">After subscribing, open the AuraChat extension. Enter your email and the 6-digit code to activate Premium.</p>
-
-      <div class="hr"></div>
-
-      <div class="faq">
-        <h3>How do I activate Premium?</h3>
-        <p>Open the extension → type your email → enter the 6-digit code we send. The popup will show “Premium” once verified.</p>
-
-        <h3>Already paid but still “Free”?</h3>
-        <p>Click “Manage billing” to confirm your subscription. Then re-open the extension and log in by email again.</p>
-      </div>
-
-      <div class="footer">Test mode is on. No real charges are made.</div>
+  <div class="card">
+    <h1>AuraChat Premium</h1>
+    <p>Unlock floating avatars, custom images, unlimited sessions, and priority updates.</p>
+    <ul>
+      <li>Unlimited chats with avatars</li>
+      <li>Custom image uploads</li>
+      <li>Faster performance</li>
+      <li>Priority support</li>
+    </ul>
+    <div class="row">
+      <!-- Replace this Payment Link URL with your own test link from Stripe -->
+      <a class="btn" href="https://buy.stripe.com/test_XXXXXX" target="_blank">Subscribe – €3.99 / month</a>
+      <a class="btn" href="https://billing.stripe.com/p/login/test_eVq3co9BA8cwbmfaKF9oc00" target="_blank">Manage billing</a>
     </div>
+    <p class="note">After subscribing, open the extension → enter your email → verify with the 6-digit code to activate Premium.</p>
   </div>
 </body>
 </html>

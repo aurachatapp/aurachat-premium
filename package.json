@@ -5,7 +5,8 @@
   "type": "module",
   "engines": { "node": ">=18.18 <23" },
   "scripts": {
-    "start": "node index.js"
+    "start": "node backend/index.js",
+    "dev": "node --watch backend/index.js"
   },
   "dependencies": {
     "express": "^4.19.2",
