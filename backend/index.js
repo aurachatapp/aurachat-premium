@@ -6,8 +6,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// normalize helper
-const norm = (e) => String(e || "").trim().toLowerCase();
+// normalize helper (final unified version)
+const normalizeEmail = (e) => String(e || "").trim().toLowerCase();
 
 // --------------------------------------------------
 // In-memory stores (cleared on restart)
@@ -40,8 +40,8 @@ setInterval(()=>{
 
 app.post("/auth/start", async (req, res) => {
   try {
-    const email = norm(req.body?.email);
-    if (!email || !email.includes("@")) return res.status(400).json({ error: "email_required" });
+    const email = normalizeEmail(req.body?.email);
+    if (!email) return res.status(400).json({ error: "email_required" });
     const code = genCode();
     const hash = bcrypt.hashSync(code, 8);
     codes.set(email, { hash, exp: Date.now() + CODE_TTL_MS });
@@ -49,27 +49,22 @@ app.post("/auth/start", async (req, res) => {
       console.warn('[RESEND] missing key; code not emailed');
       return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
     }
-    try {
-      const subject = 'Your AuraChat verification code';
-      const text = `Your AuraChat code is ${code}. It expires in 10 minutes.`;
-      const html = `<p>Your AuraChat code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`;
-      const sendResp = await resend.emails.send({ from: FROM_EMAIL, to: email, subject, text, html });
-      if(sendResp.error){
-        console.error('[RESEND] send error', sendResp.error);
-        return res.status(500).json({ error:'server_error' });
-      }
-      return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
-    } catch(e){
-      console.error('[RESEND] exception', e);
+    const subject = 'Your AuraChat verification code';
+    const text = `Your AuraChat code is ${code}. It expires in 10 minutes.`;
+    const html = `<p>Your AuraChat code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`;
+    const sendResp = await resend.emails.send({ from: FROM_EMAIL, to: email, subject, text, html });
+    if(sendResp.error){
+      console.error('[RESEND] send error', sendResp.error);
       return res.status(500).json({ error:'server_error' });
     }
+    return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
   } catch(e){
     console.error(e); return res.status(500).json({ error:'server_error' });
   }
 });
 
 app.post("/auth/verify", (req, res) => {
-  const email = norm(req.body?.email);
+  const email = normalizeEmail(req.body?.email);
   const code  = String(req.body?.code || "").trim();
   const rec = codes.get(email);
   console.log("VERIFY ATTEMPT", { email, hasCode: !!rec });
