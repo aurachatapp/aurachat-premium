@@ -1,39 +1,83 @@
-const BACKEND = "https://aurachat-premium-backend.onrender.com";
-const UPGRADE_PAGE = "https://aurachatapp.github.io/aurachat-premium/upgrade-page/upgrade.html";
+const API = "https://aurachat-premium-backend.onrender.com";
 
-const elStatus = document.getElementById("status");
-const btnUpg = document.getElementById("upgrade");
+const emailEl = document.getElementById("email");
+const sendBtn = document.getElementById("send");
+const codeStep = document.getElementById("step-code");
+const codeEl = document.getElementById("code");
+const verifyBtn = document.getElementById("verify");
+const statusBox = document.getElementById("statusBox");
+const statusEl = document.getElementById("status");
+const msg = (t) => document.getElementById("msg").textContent = t || "";
+const msg2 = (t) => document.getElementById("msg2").textContent = t || "";
 
-async function getSession() {
-  return new Promise(res => chrome.storage.sync.get(["session"], r => res(r.session || "")));
+function getToken() {
+  return new Promise(r => chrome.storage.local.get("token", v => r(v.token || null)));
+}
+function setToken(token) {
+  return new Promise(r => chrome.storage.local.set({ token }, () => r()));
+}
+function clearToken() {
+  return new Promise(r => chrome.storage.local.remove(["token"], () => r()));
 }
 
-async function refreshStatus() {
-  const session = await getSession();
-  if (!session) {
-    elStatus.textContent = "Free plan";
-    return;
-  }
-  elStatus.textContent = "Checking…";
+async function checkStatus() {
+  const token = await getToken();
+  if (!token) return showAuth();
   try {
-    const r = await fetch(`${BACKEND}/me`, {
-      headers: { Authorization: `Bearer ${session}` }
-    });
-    const data = await r.json();
-    if (data.premium) {
-      elStatus.textContent = "Premium active";
-    } else {
-      elStatus.textContent = "Free plan";
-    }
-  } catch (e) {
-    elStatus.textContent = "Status check failed";
+    const res = await fetch(`${API}/me`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw 0;
+    const data = await res.json();
+    statusEl.textContent = data.premium ? "Premium" : "Free";
+    showStatus();
+  } catch {
+    await clearToken();
+    showAuth();
   }
 }
 
-btnUpg.onclick = () => window.open(UPGRADE_PAGE, "_blank");
+function showAuth() {
+  document.getElementById("auth").style.display = "block";
+  statusBox.style.display = "none";
+}
+function showStatus() {
+  document.getElementById("auth").style.display = "none";
+  statusBox.style.display = "block";
+}
 
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg && msg.type === "session-updated") refreshStatus();
-});
+sendBtn.onclick = async () => {
+  msg("");
+  const email = emailEl.value.trim();
+  if (!email) return msg("Enter your email");
+  const res = await fetch(`${API}/auth/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email })
+  });
+  if (!res.ok) return msg("Could not send code");
+  codeStep.style.display = "block";
+  msg("Code sent. Check your inbox.");
+};
 
-refreshStatus();
+verifyBtn.onclick = async () => {
+  msg2("");
+  const email = emailEl.value.trim();
+  const code = codeEl.value.trim();
+  if (code.length !== 6) return msg2("Enter the 6 digits");
+  const res = await fetch(`${API}/auth/verify`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, code })
+  });
+  if (!res.ok) return msg2("Wrong code");
+  const data = await res.json();
+  await setToken(data.token);
+  statusEl.textContent = data.premium ? "Premium" : "Free";
+  showStatus();
+};
+
+document.getElementById("logout").onclick = async () => {
+  await clearToken();
+  showAuth();
+};
+
+checkStatus();

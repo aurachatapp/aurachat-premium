@@ -7,8 +7,10 @@
     "default_icon": { "128": "icons/icon128.png" }
   },
   "permissions": ["storage"],
-  "host_permissions": ["https://aurachatapp.github.io/aurachat-premium/*"],
-  ,
+  "host_permissions": [
+    "https://aurachatapp.github.io/aurachat-premium/*",
+    "https://aurachat-premium-backend.onrender.com/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://aurachatapp.github.io/aurachat-premium/*"],

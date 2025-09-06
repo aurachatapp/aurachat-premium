@@ -1,19 +1,29 @@
 <!doctype html>
 <html>
 <head>
-  <meta charset="utf-8" />
-  <style>
-    body { font-family: Arial, sans-serif; min-width: 280px; padding: 12px; }
-    input { width: 100%; margin-bottom: 8px; padding: 6px; }
-    button { margin: 4px 0; padding: 6px 10px; }
-  </style>
+  <meta charset="utf-8">
+  <title>AuraChat</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css">
 </head>
 <body>
+  <div id="auth">
+    <div id="step-email">
+      <input id="email" type="email" placeholder="Email" autocomplete="email" />
+      <button id="send">Get code</button>
+      <div id="msg"></div>
+    </div>
+    <div id="step-code" style="display:none">
+      <input id="code" inputmode="numeric" maxlength="6" placeholder="6-digit code" />
+      <button id="verify">Verify</button>
+      <div id="msg2"></div>
+    </div>
+  </div>
 
-  <div id="status">Checking status</div>
-
-  <div id="actions">
-    <button id="upgrade">Upgrade</button>
+  <div id="statusBox" style="display:none">
+    <div>Plan: <span id="status">Checking…</span></div>
+    <button id="logout">Log out</button>
+    <a id="upgrade" target="_blank" href="https://aurachatapp.github.io/aurachat-premium/upgrade.html">Upgrade</a>
   </div>
 
   <script src="popup.js"></script>
