@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import { Resend } from "resend";
 
 const app = express();
 app.use(cors());
@@ -18,6 +19,11 @@ const DEV_LEAK_CODE = process.env.DEV_LEAK_CODE === '1';      // respond with co
 const DEV_BYPASS_VERIFY = process.env.DEV_BYPASS_VERIFY === '1'; // allow any 6-digit code if true
 const CODE_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+// Resend setup
+const resendApiKey = process.env.RESEND_API_KEY || '';
+const resend = resendApiKey ? new Resend(resendApiKey) : null;
+const FROM_EMAIL = process.env.RESEND_FROM || 'onboarding@resend.dev';
+
 function genCode(){
   return ("" + Math.floor(100000 + Math.random() * 900000)).slice(-6);
 }
@@ -31,13 +37,30 @@ setInterval(()=>{
   for(const [email, rec] of codes){ if(rec.exp < now) codes.delete(email); }
 }, 60_000).unref?.();
 
-app.post("/auth/start", (req, res) => {
+app.post("/auth/start", async (req, res) => {
   const email = (req.body?.email || "").trim().toLowerCase();
   if(!email) return res.status(400).json({ error: "email_required" });
   const code = genCode();
   codes.set(email, { code, exp: Date.now() + CODE_TTL_MS });
-  console.log("[LOGIN CODE]", email, code);
-  return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
+  try {
+    if(!resend){
+      console.warn('[RESEND] API key missing; code not emailed, only leaked to logs');
+      if(DEV_LEAK_CODE) return res.json({ ok:true, code, note:'no_resend_key' });
+      return res.json({ ok:true });
+    }
+    const subject = 'Your AuraChat verification code';
+    const text = `Your AuraChat code is ${code}. It expires in 10 minutes.`;
+    const html = `<p>Your AuraChat code is <strong>${code}</strong>.</p><p>It expires in 10 minutes.</p>`;
+    const sendResp = await resend.emails.send({ from: FROM_EMAIL, to: email, subject, text, html });
+    if(sendResp.error){
+      console.error('[RESEND] send error', sendResp.error);
+      return res.status(500).json({ error:'email_send_failed' });
+    }
+    return res.json(DEV_LEAK_CODE ? { ok:true, code } : { ok:true });
+  } catch(e){
+    console.error('[RESEND] exception', e);
+    return res.status(500).json({ error:'email_send_failed' });
+  }
 });
 
 app.post("/auth/verify", (req, res) => {
