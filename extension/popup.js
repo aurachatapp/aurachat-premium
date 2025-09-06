@@ -49,7 +49,7 @@ async function checkStatus() {
 
 sendBtn.onclick = async () => {
   msg("");
-  const email = emailEl.value.trim();
+  const email = emailEl.value.trim().toLowerCase();
   if (!email) return msg("Enter your email");
   await setLastEmail(email);
   try {
@@ -63,7 +63,7 @@ sendBtn.onclick = async () => {
 
 verifyBtn.onclick = async () => {
   msg2("");
-  const email = emailEl.value.trim();
+  const email = emailEl.value.trim().toLowerCase();
   const code = codeEl.value.trim();
   if (code.length !== 6) return msg2('Enter the 6 digits');
   await setLastEmail(email);
